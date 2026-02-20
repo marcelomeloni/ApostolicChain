@@ -1,4 +1,3 @@
-// physics.js — completo
 import * as d3 from 'd3-force';
 import { NODE_SPACING } from './constants';
 
@@ -30,7 +29,6 @@ export const configureSimulation = (fg, graphData) => {
       });
   }
 
-  // ✅ Força Y — usa sortIndex que já é a posição ordinal correta
   fg.d3Force('y', d3.forceY()
     .y(node => {
       if (node.sortIndex !== undefined) return node.sortIndex * NODE_SPACING;
@@ -39,7 +37,7 @@ export const configureSimulation = (fg, graphData) => {
     })
     .strength(node => {
       if (node.type === 'root') return 1.0;
-      if (node.type === 'pope') return 0.98; // mais forte — não deixa sair da linha
+      if (node.type === 'pope') return 0.98;
       if (node.type === 'recovered') return 0.6;
       return 0.4;
     })
@@ -61,4 +59,19 @@ export const configureSimulation = (fg, graphData) => {
     })
   );
 
-  fg.d3F
+  fg.d3Force('collide', d3.forceCollide(node => {
+    if (node.type === 'root') return 22;
+    if (node.type === 'pope') return 16;
+    if (node.type === 'recovered') return 14;
+    return 12;
+  }).strength(0.9).iterations(4));
+
+  fg.d3Force('charge', d3.forceManyBody()
+    .strength(node => {
+      if (node.type === 'pope' || node.type === 'root') return -15;
+      if (node.type === 'recovered') return -30;
+      return -10;
+    })
+    .distanceMax(220)
+  );
+};
