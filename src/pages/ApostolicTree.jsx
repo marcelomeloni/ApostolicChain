@@ -1,3 +1,4 @@
+// ApostolicTree.jsx
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { HomeService } from '../services/HomeService';
 import { GraphCanvas } from '../components/GraphCanvas';
@@ -5,7 +6,7 @@ import { ControlPanel } from '../components/ControlPanel';
 import { Timeline } from '../components/Timeline';
 import { Legend } from '../components/Legend';
 
-export const NODE_SPACING = 38;
+export const NODE_SPACING = 14; // ✅ compacto — era 38
 const PEDRO_HASH = '0xea8b4da913e8cca3e26fb3f76c8a4ac20e0c7c25e1273ebf8f654706da07ef09';
 
 export default function ApostolicTree() {
@@ -21,7 +22,6 @@ export default function ApostolicTree() {
     const initGraph = async () => {
       const popes = await HomeService.getMainChain();
 
-      // ✅ Ordena por papacy_start_date — nulls vão para o FIM
       const sortedPopes = [...popes]
         .filter(p => p.hash !== 'jesus')
         .sort((a, b) => {
@@ -33,7 +33,6 @@ export default function ApostolicTree() {
           return new Date(dateA) - new Date(dateB);
         });
 
-      // Jesus: sortIndex -3 para ficar acima de São Pedro
       const nodes = [{
         id: 'jesus',
         name: 'Jesus Cristo',
@@ -45,57 +44,60 @@ export default function ApostolicTree() {
         century: 1,
         start_date: 33,
         year: 33,
-        sortIndex: -3,
+        sortIndex: 0,       // ✅ Jesus no topo da linha
         isCenturyAnchor: false,
         fx: 0,
-        fy: -3 * NODE_SPACING,
+        fy: 0,
+        xOffset: 0,
       }];
 
       const links = [];
       const seenCenturies = new Set([1]);
       const hashToIndex = new Map();
 
-      const SPIRAL_A = 18;        // distância entre voltas
-const SPIRAL_START = 60;    // raio inicial (deixa espaço para Jesus no centro)
-const TURNS_PER_100_YEARS = 0.8; // velocidade de rotação por século
+      // Pré-computa quantos papas há por século para o xOffset
+      const centuryCount = new Map();
+      sortedPopes.forEach(pope => {
+        const rawDate = pope.papacyStartDate ?? pope.papacy_start_date;
+        const year = rawDate ? new Date(rawDate).getFullYear() : null;
+        const century = year ? Math.ceil(year / 100) : 99;
+        centuryCount.set(century, (centuryCount.get(century) ?? 0) + 1);
+      });
 
-sortedPopes.forEach((pope, i) => {
-  const rawDate = pope.papacyStartDate ?? pope.papacy_start_date;
-  const year = rawDate ? new Date(rawDate).getFullYear() : 2100;
+      const centuryPos = new Map(); // posição atual dentro do século
 
-  const century = year ? Math.ceil(year / 100) : null;
-  const isAnchor = century != null && !seenCenturies.has(century);
-  if (isAnchor) seenCenturies.add(century);
+      sortedPopes.forEach((pope, i) => {
+        const rawDate = pope.papacyStartDate ?? pope.papacy_start_date;
+        const year = rawDate ? new Date(rawDate).getFullYear() : null;
+        const century = year ? Math.ceil(year / 100) : 99;
 
-  // ✅ Ângulo baseado no ANO REAL — não no índice
-  // Assim papas do mesmo século ficam agrupados na mesma volta
-  const angle = (year / 100) * TURNS_PER_100_YEARS * 2 * Math.PI;
-  const radius = SPIRAL_START + SPIRAL_A * (year / 100) * TURNS_PER_100_YEARS;
+        const isAnchor = !seenCenturies.has(century);
+        if (isAnchor) seenCenturies.add(century);
 
-  const spiralX = radius * Math.cos(angle);
-  const spiralY = radius * Math.sin(angle);
+        // ✅ xOffset: alterna esquerda/direita dentro do século
+        const pos = centuryPos.get(century) ?? 0;
+        centuryPos.set(century, pos + 1);
+        const xOffset = (pos % 2 === 0 ? 1 : -1) * Math.floor(pos / 2) * 6;
 
-  hashToIndex.set(pope.hash, i + 1);
+        hashToIndex.set(pope.hash, i + 1);
 
-  nodes.push({
-    id: pope.hash,
-    name: pope.name,
-    type: 'pope',
-    val: 6,
-    color: '#d4af37',
-    imgUrl: pope.imgUrl || null,
-    parent_hash: pope.parentHash ?? pope.parent_hash ?? null,
-    century,
-    start_date: year,
-    year,
-    sortIndex: i + 1,
-    isCenturyAnchor: isAnchor,
-    // ✅ Posição inicial da espiral — física só refina, não explode
-    initialX: spiralX,
-    initialY: spiralY,
-  });
-});
-      // ✅ Links via parent_hash
+        nodes.push({
+          id: pope.hash,
+          name: pope.name,
+          type: 'pope',
+          val: 6,
+          color: '#d4af37',
+          imgUrl: pope.imgUrl || null,
+          parent_hash: pope.parentHash ?? pope.parent_hash ?? null,
+          century,
+          start_date: year,
+          year,
+          sortIndex: i + 1,
+          isCenturyAnchor: isAnchor,
+          xOffset,
+        });
+      });
+
       const allIds = new Set(nodes.map(n => n.id));
 
       sortedPopes.forEach(pope => {
@@ -107,7 +109,6 @@ sortedPopes.forEach((pope, i) => {
           return;
         }
 
-        // Parent não carregado — conecta ao predecessor cronológico como fallback visual
         const myIndex = hashToIndex.get(pope.hash) ?? 1;
         if (myIndex > 1) {
           const predecessorHash = sortedPopes[myIndex - 2]?.hash;
@@ -117,7 +118,6 @@ sortedPopes.forEach((pope, i) => {
         }
       });
 
-      // São Pedro → Jesus
       if (allIds.has(PEDRO_HASH)) {
         links.push({ source: PEDRO_HASH, target: 'jesus', linkType: 'consecration' });
       }
@@ -139,8 +139,9 @@ sortedPopes.forEach((pope, i) => {
     if (!fg) return;
     const target = graphData.nodes.find(n => n.century === century && n.isCenturyAnchor);
     if (target) {
-      fg.centerAt(0, (target.sortIndex ?? 0) * NODE_SPACING - 80, 1000);
-      fg.zoom(2.5, 1000);
+      // ✅ usa posição real do nó após física
+      fg.centerAt(target.x ?? 0, target.y ?? (target.sortIndex * NODE_SPACING), 1000);
+      fg.zoom(3.5, 1000);
     }
   }, [graphData.nodes]);
 
@@ -199,7 +200,6 @@ sortedPopes.forEach((pope, i) => {
           }
         });
 
-        // Garante link do startNode ao primeiro da chain (se não for ele mesmo)
         if (chain.length > 0 && chain[0].hash !== startNode.id) {
           newLinks.push({ source: startNode.id, target: chain[0].hash, linkType: 'consecration' });
         }
@@ -211,9 +211,8 @@ sortedPopes.forEach((pope, i) => {
       });
     }
 
-    // Monta highlights
-    const chainIds   = chain.map(c => c.hash);
-    const fullChain  = chainIds[0] === startNode.id
+    const chainIds  = chain.map(c => c.hash);
+    const fullChain = chainIds[0] === startNode.id
       ? chainIds
       : [startNode.id, ...chainIds];
 
@@ -224,13 +223,11 @@ sortedPopes.forEach((pope, i) => {
       newHighlightLinks.add(`${fullChain[i + 1]}->${fullChain[i]}`);
     }
 
-    // Trata fim da chain
     const lastHash   = fullChain[fullChain.length - 1];
     const lastNode   = chain.find(c => c.hash === lastHash);
     const lastParent = lastNode?.parentHash ?? lastNode?.parent_hash;
 
     if (!lastParent || lastParent.toLowerCase() === '00x00x00') {
-      // Chain quebrada — nó "Dados Perdidos"
       const lostId = `lost_${lastHash}`;
       setGraphData(prev => {
         if (prev.nodes.find(n => n.id === lostId)) return prev;
@@ -246,8 +243,8 @@ sortedPopes.forEach((pope, i) => {
           }],
           links: [
             ...prev.links,
-            { source: lastHash,    target: lostId,     linkType: 'lost' },
-            { source: lostId,      target: PEDRO_HASH, linkType: 'lost' },
+            { source: lastHash, target: lostId,     linkType: 'lost' },
+            { source: lostId,   target: PEDRO_HASH, linkType: 'lost' },
           ],
         };
       });
@@ -257,19 +254,16 @@ sortedPopes.forEach((pope, i) => {
       newHighlightLinks.add(`${lastHash}->${lostId}`);
       newHighlightLinks.add(`${lostId}->${PEDRO_HASH}`);
       newHighlightLinks.add(`${PEDRO_HASH}->jesus`);
-
     } else if (lastParent === PEDRO_HASH) {
       newHighlightNodes.add(PEDRO_HASH);
       newHighlightNodes.add('jesus');
       newHighlightLinks.add(`${lastHash}->${PEDRO_HASH}`);
       newHighlightLinks.add(`${PEDRO_HASH}->jesus`);
-
     } else if (lastParent === 'jesus') {
       newHighlightNodes.add('jesus');
       newHighlightLinks.add(`${lastHash}->jesus`);
     }
 
-    // Sempre destaca São Pedro e Jesus no final
     newHighlightNodes.add(PEDRO_HASH);
     newHighlightNodes.add('jesus');
     newHighlightLinks.add(`${PEDRO_HASH}->jesus`);
@@ -342,15 +336,8 @@ sortedPopes.forEach((pope, i) => {
     setSearchTerm('');
     setIsTracing(false);
     const fg = fgRef.current;
-    if (fg) {
-      const popeNodes = graphData.nodes.filter(n => n.type === 'pope' || n.type === 'root');
-      const maxIdx    = Math.max(...popeNodes.map(n => n.sortIndex ?? 0));
-      const totalH    = maxIdx * NODE_SPACING;
-      const targetZoom = Math.min((window.innerHeight * 0.75) / totalH, 2.5);
-      fg.centerAt(0, totalH * 0.3, 700);
-      fg.zoom(Math.max(targetZoom, 0.4), 700);
-    }
-  }, [cleanTransientNodes, graphData.nodes]);
+    if (fg) fg.zoomToFit(600, 40);
+  }, [cleanTransientNodes]);
 
   // ─── 6. RENDER ───────────────────────────────────────────────────────────
   return (
@@ -385,4 +372,3 @@ sortedPopes.forEach((pope, i) => {
     </div>
   );
 }
-
