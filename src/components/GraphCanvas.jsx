@@ -18,17 +18,17 @@ export function GraphCanvas({ fgRef, graphData, onNodeClick, highlightNodes, hig
     if (!fgRef.current || graphData.nodes.length === 0) return;
 
     // Pre-position ALL nodes before physics starts — critical to prevent explosion
-    graphData.nodes.forEach(node => {
-      if (node.id === 'jesus') {
-        node.fx = 0;  // permanently pinned
-        node.fy = 0;
-        node.x  = 0;
-        node.y  = 0;
-      } else if (node.type === 'pope' && node.sortIndex !== undefined) {
-        node.x = 0;  // start on center axis — X force will handle spread
-        node.y = node.sortIndex * NODE_SPACING;
-      }
-    });
+   graphData.nodes.forEach(node => {
+  if (node.id === 'jesus') {
+    node.fx = 0;
+    node.fy = 0;
+    node.x  = 0;
+    node.y  = 0;
+  } else if (node.initialX !== undefined) {
+    node.x = node.initialX;
+    node.y = node.initialY;
+  }
+});
 
     configureSimulation(fgRef.current, graphData);
     simulationConfigured.current = true;
@@ -151,4 +151,5 @@ export function GraphCanvas({ fgRef, graphData, onNodeClick, highlightNodes, hig
       />
     </div>
   );
+
 }
