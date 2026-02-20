@@ -29,35 +29,35 @@ export const configureSimulation = (fg, graphData) => {
       });
   }
 
-  fg.d3Force('y', d3.forceY()
-    .y(node => {
-      if (node.sortIndex !== undefined) return node.sortIndex * NODE_SPACING;
-      if (node.start_date) return (node.start_date / 50) * NODE_SPACING;
-      return 300;
-    })
-    .strength(node => {
-      if (node.type === 'root') return 1.0;
-      if (node.type === 'pope') return 0.98;
-      if (node.type === 'recovered') return 0.6;
-      return 0.4;
-    })
-  );
+  
+fg.d3Force('y', d3.forceY()
+  .y(node => {
+    if (node.id === 'jesus') return 0;
+    return node.initialY ?? (node.sortIndex ?? 1) * NODE_SPACING;
+  })
+  .strength(node => {
+    if (node.type === 'root') return 1.0;
+    if (node.type === 'pope') return 0.85;
+    if (node.type === 'recovered') return 0.5;
+    return 0.3;
+  })
+);
 
-  fg.d3Force('x', d3.forceX()
-    .x(node => {
-      if (node.type === 'root' || node.type === 'pope') return 0;
-      const code = node.id.split('').reduce((acc, c) => acc + c.charCodeAt(0), 0);
-      const side = code % 2 === 0 ? 1 : -1;
-      const depth = node.traceDepth ?? 1;
-      return side * (100 + depth * 18);
-    })
-    .strength(node => {
-      if (node.type === 'root') return 1.0;
-      if (node.type === 'pope') return 0.95;
-      if (node.type === 'recovered') return 0.65;
-      return 0.5;
-    })
-  );
+fg.d3Force('x', d3.forceX()
+  .x(node => {
+    if (node.id === 'jesus') return 0;
+    if (node.type === 'pope') return node.initialX ?? 0;
+    // Recovered ficam perto do seu pope na espiral
+    const code = node.id.split('').reduce((acc, c) => acc + c.charCodeAt(0), 0);
+    return (node.initialX ?? 0) + (code % 2 === 0 ? 40 : -40);
+  })
+  .strength(node => {
+    if (node.type === 'root') return 1.0;
+    if (node.type === 'pope') return 0.85;
+    if (node.type === 'recovered') return 0.5;
+    return 0.3;
+  })
+);
 
   fg.d3Force('collide', d3.forceCollide(node => {
     if (node.type === 'root') return 22;
@@ -75,3 +75,4 @@ export const configureSimulation = (fg, graphData) => {
     .distanceMax(220)
   );
 };
+
