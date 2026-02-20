@@ -6,7 +6,7 @@ import { ControlPanel } from '../components/ControlPanel';
 import { Timeline } from '../components/Timeline';
 import { Legend } from '../components/Legend';
 
-export const NODE_SPACING = 14; // ✅ compacto — era 38
+export const NODE_SPACING = 38; // ✅ compacto — era 38
 const PEDRO_HASH = '0xea8b4da913e8cca3e26fb3f76c8a4ac20e0c7c25e1273ebf8f654706da07ef09';
 
 export default function ApostolicTree() {
@@ -372,3 +372,4 @@ export default function ApostolicTree() {
     </div>
   );
 }
+
