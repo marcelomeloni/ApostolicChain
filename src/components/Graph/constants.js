@@ -1,5 +1,5 @@
 // Espaçamento lógico vertical entre nós
-export const NODE_SPACING = 14;
+export const NODE_SPACING = 38;
 
 // Limiares de Zoom
 export const ZOOM_CLUSTER = 0.9;
@@ -24,3 +24,4 @@ export const COLORS = {
   LINK_DEFAULT: 'rgba(148,163,184,0.35)'
 
 };
+
