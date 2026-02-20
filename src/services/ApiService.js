@@ -1,6 +1,6 @@
 // src/services/ApiService.js
 
-const API_BASE_URL = 'http://localhost:8080/api';
+const API_BASE_URL = 'https://backend-apostolicchain.onrender.com/api';
 
 export const ApiService = {
   async request(endpoint, options = {}) {
@@ -36,4 +36,5 @@ export const ApiService = {
 
     throw new Error(errorMessage);
   }
+
 };
