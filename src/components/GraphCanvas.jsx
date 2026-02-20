@@ -12,57 +12,50 @@ export function GraphCanvas({ fgRef, graphData, onNodeClick, highlightNodes, hig
 
   const effectiveZoom = isTracing ? Math.max(currentZoom, ZOOM_CLUSTER + 0.01) : currentZoom;
 
-  // ─── 1. Configure simulation ONCE on first load ───────────────────────────
+  // ─── 1. Configure simulation ONCE ────────────────────────────────────────
   useEffect(() => {
     if (simulationConfigured.current) return;
     if (!fgRef.current || graphData.nodes.length === 0) return;
 
-    // Pre-position ALL nodes before physics starts — critical to prevent explosion
-   graphData.nodes.forEach(node => {
-  if (node.id === 'jesus') {
-    node.fx = 0;
-    node.fy = 0;
-    node.x  = 0;
-    node.y  = 0;
-  } else if (node.initialX !== undefined) {
-    node.x = node.initialX;
-    node.y = node.initialY;
-  }
-});
+    // ✅ Pre-posiciona todos antes da física rodar
+    graphData.nodes.forEach(node => {
+      if (node.id === 'jesus') {
+        node.fx = 0;
+        node.fy = 0;
+        node.x  = 0;
+        node.y  = 0;
+      } else if (node.sortIndex !== undefined) {
+        node.x = node.xOffset ?? 0;
+        node.y = node.sortIndex * NODE_SPACING;
+      }
+    });
 
     configureSimulation(fgRef.current, graphData);
     simulationConfigured.current = true;
   }, [graphData.nodes.length, fgRef]);
 
-  // ─── 2. Soft reheat only when transient nodes are added ──────────────────
+  // ─── 2. Reheat suave ao adicionar nós transientes ────────────────────────
   useEffect(() => {
     if (!simulationConfigured.current) return;
     const fg = fgRef.current;
     if (!fg) return;
-
     const hasTransient = graphData.nodes.some(n => n.type === 'recovered' || n.type === 'lost');
-    if (!hasTransient) return;
-
-    // Soft reheat: don't restart fully, just nudge
-    const sim = fg.d3Force('link');
-    if (sim) fg.d3ReheatSimulation();
+    if (hasTransient) fg.d3ReheatSimulation();
   }, [graphData.nodes.length, fgRef]);
 
-  // ─── 3. Initial camera framing ────────────────────────────────────────────
- useEffect(() => {
-  if (initialCameraSet.current || graphData.nodes.length === 0) return;
+  // ─── 3. Câmera inicial ────────────────────────────────────────────────────
+  useEffect(() => {
+    if (initialCameraSet.current || graphData.nodes.length === 0) return;
 
-  const timer = setTimeout(() => {
-    const fg = fgRef.current;
-    if (!fg || typeof fg.zoomToFit !== 'function') return;
+    const timer = setTimeout(() => {
+      const fg = fgRef.current;
+      if (!fg || typeof fg.zoomToFit !== 'function') return;
+      fg.zoomToFit(500, 50);
+      initialCameraSet.current = true;
+    }, 600);
 
-    // ✅ Enquadra todos os nós automaticamente
-    fg.zoomToFit(400, 60);
-    initialCameraSet.current = true;
-  }, 800);
-
-  return () => clearTimeout(timer);
-}, [graphData.nodes.length, fgRef]);
+    return () => clearTimeout(timer);
+  }, [graphData.nodes.length, fgRef]);
 
   // ─── 4. Render wrappers ───────────────────────────────────────────────────
   const handlePaintNode = useCallback((node, ctx, globalScale) => {
@@ -77,12 +70,10 @@ export function GraphCanvas({ fgRef, graphData, onNodeClick, highlightNodes, hig
     return getLinkStyle(link, effectiveZoom, highlightLinks).width;
   }, [effectiveZoom, highlightLinks]);
 
-  // ✅ Use curvature from getLinkStyle so inferred links are visually distinct
   const handleLinkCurvature = useCallback(link => {
     return getLinkStyle(link, effectiveZoom, highlightLinks).curvature ?? 0;
   }, [effectiveZoom, highlightLinks]);
 
-  // ─── 5. Link particle animation on highlighted path ───────────────────────
   const handleLinkParticles = useCallback(link => {
     const id  = `${link.source?.id ?? link.source}->${link.target?.id ?? link.target}`;
     const rev = `${link.target?.id ?? link.target}->${link.source?.id ?? link.source}`;
@@ -104,27 +95,22 @@ export function GraphCanvas({ fgRef, graphData, onNodeClick, highlightNodes, hig
         backgroundColor={COLORS.BG}
         onZoom={({ k }) => setCurrentZoom(k)}
 
-        // Node rendering
         nodeCanvasObject={handlePaintNode}
         nodeCanvasObjectMode={() => 'replace'}
 
-        // Link rendering
         linkColor={handleLinkColor}
         linkWidth={handleLinkWidth}
         linkCurvature={handleLinkCurvature}
 
-        // ✅ Animated particles along highlighted path
         linkDirectionalParticles={handleLinkParticles}
         linkDirectionalParticleColor={handleParticleColor}
         linkDirectionalParticleWidth={2}
         linkDirectionalParticleSpeed={0.005}
 
-        // Physics — slower decay = more stable, less flying
         d3VelocityDecay={0.65}
         d3AlphaDecay={0.025}
         d3AlphaMin={0.001}
 
-        // Interactions
         onNodeClick={onNodeClick}
         minZoom={0.1}
         maxZoom={14}
@@ -132,12 +118,9 @@ export function GraphCanvas({ fgRef, graphData, onNodeClick, highlightNodes, hig
         enablePanInteraction={true}
         enableZoomInteraction={true}
 
-        // Run physics ticks before first paint — nodes start near correct positions
-        warmupTicks={120}
-        cooldownTicks={300}
+        warmupTicks={0}
+        cooldownTicks={500}
       />
     </div>
   );
-
 }
-
