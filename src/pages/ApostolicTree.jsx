@@ -55,33 +55,46 @@ export default function ApostolicTree() {
       const seenCenturies = new Set([1]);
       const hashToIndex = new Map();
 
-      sortedPopes.forEach((pope, i) => {
-        const rawDate = pope.papacyStartDate ?? pope.papacy_start_date;
-        const year = rawDate ? new Date(rawDate).getFullYear() : null;
+      const SPIRAL_A = 18;        // distância entre voltas
+const SPIRAL_START = 60;    // raio inicial (deixa espaço para Jesus no centro)
+const TURNS_PER_100_YEARS = 0.8; // velocidade de rotação por século
 
-        // ✅ Math.ceil garante século correto (ano 100 = século I, ano 101 = século II)
-        const century = year ? Math.ceil(year / 100) : null;
-        const isAnchor = century != null && !seenCenturies.has(century);
-        if (isAnchor) seenCenturies.add(century);
+sortedPopes.forEach((pope, i) => {
+  const rawDate = pope.papacyStartDate ?? pope.papacy_start_date;
+  const year = rawDate ? new Date(rawDate).getFullYear() : 2100;
 
-        hashToIndex.set(pope.hash, i + 1);
+  const century = year ? Math.ceil(year / 100) : null;
+  const isAnchor = century != null && !seenCenturies.has(century);
+  if (isAnchor) seenCenturies.add(century);
 
-        nodes.push({
-          id: pope.hash,
-          name: pope.name,
-          type: 'pope',
-          val: 6,
-          color: '#d4af37',
-          imgUrl: pope.imgUrl || null,
-          parent_hash: pope.parentHash ?? pope.parent_hash ?? null,
-          century,
-          start_date: year,
-          year,
-          sortIndex: i + 1,
-          isCenturyAnchor: isAnchor,
-        });
-      });
+  // ✅ Ângulo baseado no ANO REAL — não no índice
+  // Assim papas do mesmo século ficam agrupados na mesma volta
+  const angle = (year / 100) * TURNS_PER_100_YEARS * 2 * Math.PI;
+  const radius = SPIRAL_START + SPIRAL_A * (year / 100) * TURNS_PER_100_YEARS;
 
+  const spiralX = radius * Math.cos(angle);
+  const spiralY = radius * Math.sin(angle);
+
+  hashToIndex.set(pope.hash, i + 1);
+
+  nodes.push({
+    id: pope.hash,
+    name: pope.name,
+    type: 'pope',
+    val: 6,
+    color: '#d4af37',
+    imgUrl: pope.imgUrl || null,
+    parent_hash: pope.parentHash ?? pope.parent_hash ?? null,
+    century,
+    start_date: year,
+    year,
+    sortIndex: i + 1,
+    isCenturyAnchor: isAnchor,
+    // ✅ Posição inicial da espiral — física só refina, não explode
+    initialX: spiralX,
+    initialY: spiralY,
+  });
+});
       // ✅ Links via parent_hash
       const allIds = new Set(nodes.map(n => n.id));
 
@@ -372,3 +385,4 @@ export default function ApostolicTree() {
     </div>
   );
 }
+
