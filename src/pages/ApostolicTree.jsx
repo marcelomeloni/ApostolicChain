@@ -18,120 +18,99 @@ export default function ApostolicTree() {
 
   // ─── 1. LOAD INITIAL GRAPH ────────────────────────────────────────────────
   useEffect(() => {
-   const initGraph = async () => {
-  const popes = await HomeService.getMainChain();
+    const initGraph = async () => {
+      const popes = await HomeService.getMainChain();
 
-  const nodes = [{
-    id: 'jesus',
-    name: 'Jesus Cristo',
-    type: 'root',
-    val: 15,
-    color: '#fbbf24',
-    imgUrl: 'https://upload.wikimedia.org/wikipedia/commons/thumb/4/4a/Christ_Pantocrator_mosaic_from_Hagia_Sophia_2744_x_2900_pixels_3.1_MB.jpg/220px-Christ_Pantocrator_mosaic_from_Hagia_Sophia_2744_x_2900_pixels_3.1_MB.jpg',
-    parent_hash: null,
-    last_hash: null,
-    century: 1,
-    start_date: 0,
-    year: 0,
-    sortIndex: 0,
-    isCenturyAnchor: true,
-  }];
+      // ✅ Ordena por papacy_start_date — nulls vão para o FIM
+      const sortedPopes = [...popes]
+        .filter(p => p.hash !== 'jesus')
+        .sort((a, b) => {
+          const dateA = a.papacyStartDate ?? a.papacy_start_date;
+          const dateB = b.papacyStartDate ?? b.papacy_start_date;
+          if (!dateA && !dateB) return 0;
+          if (!dateA) return 1;
+          if (!dateB) return -1;
+          return new Date(dateA) - new Date(dateB);
+        });
 
-  const links = [];
-  const seenCenturies = new Set([1]);
+      // Jesus: sortIndex -3 para ficar acima de São Pedro
+      const nodes = [{
+        id: 'jesus',
+        name: 'Jesus Cristo',
+        type: 'root',
+        val: 15,
+        color: '#fbbf24',
+        imgUrl: 'https://upload.wikimedia.org/wikipedia/commons/thumb/4/4a/Christ_Pantocrator_mosaic_from_Hagia_Sophia_2744_x_2900_pixels_3.1_MB.jpg/220px-Christ_Pantocrator_mosaic_from_Hagia_Sophia_2744_x_2900_pixels_3.1_MB.jpg',
+        parent_hash: null,
+        century: 1,
+        start_date: 33,
+        year: 33,
+        sortIndex: -3,
+        isCenturyAnchor: false,
+        fx: 0,
+        fy: -3 * NODE_SPACING,
+      }];
 
-  const sortedPopes = [...popes]
-    .filter(p => p.hash !== 'jesus')
-    .sort((a, b) => {
-      const dateA = a.papacyStartDate ?? a.papacy_start_date ?? a.startDate ?? a.start_date ?? '9999';
-      const dateB = b.papacyStartDate ?? b.papacy_start_date ?? b.startDate ?? b.start_date ?? '9999';
-      return new Date(dateA) - new Date(dateB);
-    });
+      const links = [];
+      const seenCenturies = new Set([1]);
+      const hashToIndex = new Map();
 
-  // Mapa hash → node para lookup rápido ao criar links
-  const hashToIndex = new Map();
+      sortedPopes.forEach((pope, i) => {
+        const rawDate = pope.papacyStartDate ?? pope.papacy_start_date;
+        const year = rawDate ? new Date(rawDate).getFullYear() : null;
 
-  sortedPopes.forEach((pope, i) => {
-    const rawDate = pope.papacyStartDate ?? pope.papacy_start_date ?? pope.startDate ?? pope.start_date;
-    const year = rawDate ? parseInt(rawDate) : 0;
-    const century = Math.floor(year / 100) + 1;
-    const isAnchor = !seenCenturies.has(century);
-    if (isAnchor) seenCenturies.add(century);
+        // ✅ Math.ceil garante século correto (ano 100 = século I, ano 101 = século II)
+        const century = year ? Math.ceil(year / 100) : null;
+        const isAnchor = century != null && !seenCenturies.has(century);
+        if (isAnchor) seenCenturies.add(century);
 
-    hashToIndex.set(pope.hash, i + 1);
+        hashToIndex.set(pope.hash, i + 1);
 
-    nodes.push({
-      id: pope.hash,
-      name: pope.name,
-      type: 'pope',
-      val: 6,
-      color: '#d4af37',
-      imgUrl: pope.imgUrl || null,
-      parent_hash: pope.parentHash ?? pope.parent_hash ?? null,
-      last_hash: pope.lastHash ?? pope.last_hash ?? null,
-      century,
-      start_date: year,
-      year,
-      sortIndex: i + 1,
-      isCenturyAnchor: isAnchor,
-    });
-  });
-
-  // ✅ Constrói todos os links a partir do parent_hash de cada papa
-  const allIds = new Set(nodes.map(n => n.id));
-
-  sortedPopes.forEach(pope => {
-    const parentHash = pope.parentHash ?? pope.parent_hash;
-
-    if (!parentHash) return;
-
-    // Sentinela = chain quebrada, pula (será tratada ao clicar)
-    if (parentHash.toLowerCase() === '00x00x00') return;
-
-    // Parent está no grafo: link direto
-    if (allIds.has(parentHash)) {
-      links.push({
-        source: pope.hash,
-        target: parentHash,
-        linkType: 'consecration', // consagração episcopal
+        nodes.push({
+          id: pope.hash,
+          name: pope.name,
+          type: 'pope',
+          val: 6,
+          color: '#d4af37',
+          imgUrl: pope.imgUrl || null,
+          parent_hash: pope.parentHash ?? pope.parent_hash ?? null,
+          century,
+          start_date: year,
+          year,
+          sortIndex: i + 1,
+          isCenturyAnchor: isAnchor,
+        });
       });
-      return;
-    }
 
-    // Parent é São Pedro: conecta a ele
-    if (parentHash === PEDRO_HASH) {
-      links.push({
-        source: pope.hash,
-        target: PEDRO_HASH,
-        linkType: 'consecration',
+      // ✅ Links via parent_hash
+      const allIds = new Set(nodes.map(n => n.id));
+
+      sortedPopes.forEach(pope => {
+        const parentHash = pope.parentHash ?? pope.parent_hash;
+        if (!parentHash || parentHash.toLowerCase() === '00x00x00') return;
+
+        if (allIds.has(parentHash)) {
+          links.push({ source: pope.hash, target: parentHash, linkType: 'consecration' });
+          return;
+        }
+
+        // Parent não carregado — conecta ao predecessor cronológico como fallback visual
+        const myIndex = hashToIndex.get(pope.hash) ?? 1;
+        if (myIndex > 1) {
+          const predecessorHash = sortedPopes[myIndex - 2]?.hash;
+          if (predecessorHash) {
+            links.push({ source: pope.hash, target: predecessorHash, linkType: 'inferred' });
+          }
+        }
       });
-      return;
-    }
 
-    // Parent não está no grafo (bispo intermediário não carregado):
-    // conecta ao papa cronologicamente anterior como fallback visual
-    const myIndex = hashToIndex.get(pope.hash) ?? 1;
-    const predecessor = sortedPopes.find((_, i) => i + 1 === myIndex - 1);
-    if (predecessor) {
-      links.push({
-        source: pope.hash,
-        target: predecessor.hash,
-        linkType: 'inferred', // linha inferida (tracejada)
-      });
-    }
-  });
+      // São Pedro → Jesus
+      if (allIds.has(PEDRO_HASH)) {
+        links.push({ source: PEDRO_HASH, target: 'jesus', linkType: 'consecration' });
+      }
 
-  // ✅ Liga São Pedro a Jesus
-  if (allIds.has(PEDRO_HASH)) {
-    links.push({
-      source: PEDRO_HASH,
-      target: 'jesus',
-      linkType: 'consecration',
-    });
-  }
-
-  setGraphData({ nodes, links });
-};
+      setGraphData({ nodes, links });
+    };
 
     initGraph();
   }, []);
@@ -153,146 +132,159 @@ export default function ApostolicTree() {
   }, [graphData.nodes]);
 
   // ─── 3. TRACE PATH ───────────────────────────────────────────────────────
- const tracePathToJesus = useCallback(async (startNode) => {
-  setIsTracing(true);
-  const newHighlightNodes = new Set();
-  const newHighlightLinks = new Set();
+  const tracePathToJesus = useCallback(async (startNode) => {
+    setIsTracing(true);
 
-  newHighlightNodes.add(startNode.id);
+    const newHighlightNodes = new Set();
+    const newHighlightLinks = new Set();
+    newHighlightNodes.add(startNode.id);
 
-  // ✅ Busca a cadeia completa do backend de uma vez
-  let chain = [];
-  try {
-    chain = await HomeService.traceLineage(startNode.id);
-  } catch (e) {
-    console.warn('traceLineage failed:', e);
-  }
+    let chain = [];
+    try {
+      chain = await HomeService.traceLineage(startNode.id);
+    } catch (e) {
+      console.warn('traceLineage failed:', e);
+    }
 
-  // Adiciona nós da cadeia que ainda não estão no grafo
-  if (chain.length > 0) {
-    setGraphData(prev => {
-      const existingIds = new Set(prev.nodes.map(n => n.id));
-      const newNodes = [];
-      const newLinks = [];
+    if (chain.length > 0) {
+      setGraphData(prev => {
+        const existingIds = new Set(prev.nodes.map(n => n.id));
+        const newNodes = [];
+        const newLinks = [];
 
-      chain.forEach((clergy, i) => {
-        const rawDate = clergy.papacyStartDate ?? clergy.papacy_start_date ?? clergy.startDate ?? clergy.start_date;
-        const year = rawDate ? parseInt(rawDate) : 0;
+        chain.forEach((clergy, i) => {
+          const rawDate = clergy.papacyStartDate ?? clergy.papacy_start_date
+            ?? clergy.startDate ?? clergy.start_date;
+          const year = rawDate ? new Date(rawDate).getFullYear() : 0;
 
-        if (!existingIds.has(clergy.hash)) {
-          newNodes.push({
-            ...clergy,
-            id: clergy.hash,
-            start_date: year,
-            year,
-            val: 4,
-            color: '#94a3b8',
-            type: 'recovered',
-            traceDepth: i,          
-      traceMaxDepth: chain.length - 1,
-            parent_hash: clergy.parentHash ?? clergy.parent_hash ?? null,
-          });
-          existingIds.add(clergy.hash);
-        }
-
-        // Cria link entre nó atual e seu parent (próximo da lista)
-        if (i < chain.length - 1) {
-          const childHash = clergy.hash;
-          const parentHash = chain[i + 1].hash;
-          const alreadyExists = prev.links.find(l =>
-            (l.source?.id ?? l.source) === childHash &&
-            (l.target?.id ?? l.target) === parentHash
-          );
-          if (!alreadyExists) {
-            newLinks.push({ source: childHash, target: parentHash, linkType: 'consecration' });
+          if (!existingIds.has(clergy.hash)) {
+            newNodes.push({
+              ...clergy,
+              id: clergy.hash,
+              start_date: year,
+              year,
+              val: 4,
+              color: '#94a3b8',
+              type: 'recovered',
+              traceDepth: i,
+              traceMaxDepth: chain.length - 1,
+              parent_hash: clergy.parentHash ?? clergy.parent_hash ?? null,
+            });
+            existingIds.add(clergy.hash);
           }
+
+          if (i < chain.length - 1) {
+            const childHash  = clergy.hash;
+            const parentHash = chain[i + 1].hash;
+            const alreadyExists = prev.links.some(l =>
+              (l.source?.id ?? l.source) === childHash &&
+              (l.target?.id ?? l.target) === parentHash
+            );
+            if (!alreadyExists) {
+              newLinks.push({ source: childHash, target: parentHash, linkType: 'consecration' });
+            }
+          }
+        });
+
+        // Garante link do startNode ao primeiro da chain (se não for ele mesmo)
+        if (chain.length > 0 && chain[0].hash !== startNode.id) {
+          newLinks.push({ source: startNode.id, target: chain[0].hash, linkType: 'consecration' });
         }
+
+        return {
+          nodes: [...prev.nodes, ...newNodes],
+          links: [...prev.links, ...newLinks],
+        };
       });
+    }
 
-      // Garante link do startNode ao primeiro da chain (caso não seja ele mesmo)
-      if (chain.length > 0 && chain[0].hash !== startNode.id) {
-        newLinks.push({ source: startNode.id, target: chain[0].hash, linkType: 'consecration' });
-      }
+    // Monta highlights
+    const chainIds   = chain.map(c => c.hash);
+    const fullChain  = chainIds[0] === startNode.id
+      ? chainIds
+      : [startNode.id, ...chainIds];
 
-      return {
-        nodes: [...prev.nodes, ...newNodes],
-        links: [...prev.links, ...newLinks],
-      };
-    });
-  }
+    fullChain.forEach(id => newHighlightNodes.add(id));
 
-  // Monta highlight percorrendo a chain
-  const allNodes = [...graphData.nodes]; // snapshot antes do setGraphData async
-  const chainIds = chain.map(c => c.hash);
+    for (let i = 0; i < fullChain.length - 1; i++) {
+      newHighlightLinks.add(`${fullChain[i]}->${fullChain[i + 1]}`);
+      newHighlightLinks.add(`${fullChain[i + 1]}->${fullChain[i]}`);
+    }
 
-  // Adiciona o startNode se não estiver na chain
-  const fullChain = chainIds[0] === startNode.id ? chainIds : [startNode.id, ...chainIds];
+    // Trata fim da chain
+    const lastHash   = fullChain[fullChain.length - 1];
+    const lastNode   = chain.find(c => c.hash === lastHash);
+    const lastParent = lastNode?.parentHash ?? lastNode?.parent_hash;
 
-  fullChain.forEach(id => newHighlightNodes.add(id));
+    if (!lastParent || lastParent.toLowerCase() === '00x00x00') {
+      // Chain quebrada — nó "Dados Perdidos"
+      const lostId = `lost_${lastHash}`;
+      setGraphData(prev => {
+        if (prev.nodes.find(n => n.id === lostId)) return prev;
+        return {
+          nodes: [...prev.nodes, {
+            id: lostId,
+            name: 'Dados Perdidos',
+            type: 'lost',
+            val: 10,
+            color: '#ef4444',
+            parent_hash: PEDRO_HASH,
+            start_date: (lastNode?.start_date ?? 100) - 30,
+          }],
+          links: [
+            ...prev.links,
+            { source: lastHash,    target: lostId,     linkType: 'lost' },
+            { source: lostId,      target: PEDRO_HASH, linkType: 'lost' },
+          ],
+        };
+      });
+      newHighlightNodes.add(lostId);
+      newHighlightNodes.add(PEDRO_HASH);
+      newHighlightNodes.add('jesus');
+      newHighlightLinks.add(`${lastHash}->${lostId}`);
+      newHighlightLinks.add(`${lostId}->${PEDRO_HASH}`);
+      newHighlightLinks.add(`${PEDRO_HASH}->jesus`);
 
-  for (let i = 0; i < fullChain.length - 1; i++) {
-    newHighlightLinks.add(`${fullChain[i]}->${fullChain[i + 1]}`);
-    newHighlightLinks.add(`${fullChain[i + 1]}->${fullChain[i]}`);
-  }
+    } else if (lastParent === PEDRO_HASH) {
+      newHighlightNodes.add(PEDRO_HASH);
+      newHighlightNodes.add('jesus');
+      newHighlightLinks.add(`${lastHash}->${PEDRO_HASH}`);
+      newHighlightLinks.add(`${PEDRO_HASH}->jesus`);
 
-  // Trata fim da chain
-  const lastHash = fullChain[fullChain.length - 1];
-  const lastNode = chain.find(c => c.hash === lastHash);
-  const lastParent = lastNode?.parentHash ?? lastNode?.parent_hash;
+    } else if (lastParent === 'jesus') {
+      newHighlightNodes.add('jesus');
+      newHighlightLinks.add(`${lastHash}->jesus`);
+    }
 
-  if (lastParent?.toLowerCase() === '00x00x00' || !lastParent) {
-    // Chain quebrada — adiciona nó lost
-    const lostId = `lost_${lastHash}`;
-    setGraphData(prev => {
-      if (prev.nodes.find(n => n.id === lostId)) return prev;
-      return {
-        nodes: [...prev.nodes, {
-          id: lostId, name: 'Dados Perdidos', type: 'lost',
-          val: 10, color: '#ef4444', parent_hash: PEDRO_HASH,
-          start_date: (lastNode?.start_date ?? 100) - 30,
-        }],
-        links: [
-          ...prev.links,
-          { source: lastHash, target: lostId },
-          { source: lostId, target: PEDRO_HASH },
-        ],
-      };
-    });
-    newHighlightNodes.add(lostId);
+    // Sempre destaca São Pedro e Jesus no final
     newHighlightNodes.add(PEDRO_HASH);
     newHighlightNodes.add('jesus');
-    newHighlightLinks.add(`${lastHash}->${lostId}`);
-    newHighlightLinks.add(`${lostId}->${PEDRO_HASH}`);
     newHighlightLinks.add(`${PEDRO_HASH}->jesus`);
-  } else if (lastParent === PEDRO_HASH) {
-    newHighlightNodes.add(PEDRO_HASH);
-    newHighlightNodes.add('jesus');
-    newHighlightLinks.add(`${lastHash}->${PEDRO_HASH}`);
-    newHighlightLinks.add(`${PEDRO_HASH}->jesus`);
-  } else if (lastParent === 'jesus') {
-    newHighlightNodes.add('jesus');
-    newHighlightLinks.add(`${lastHash}->jesus`);
-  }
+    newHighlightLinks.add(`jesus->${PEDRO_HASH}`);
 
-  setHighlightNodes(newHighlightNodes);
-  setHighlightLinks(newHighlightLinks);
+    setHighlightNodes(newHighlightNodes);
+    setHighlightLinks(newHighlightLinks);
+    setIsTracing(false);
 
-  setTimeout(() => {
-    const fg = fgRef.current;
-    if (!fg || typeof fg.zoomToFit !== 'function') return;
-    fg.zoomToFit(900, 60, node => newHighlightNodes.has(node.id));
     setTimeout(() => {
-      const z = fgRef.current?.zoom();
-      if (typeof z === 'number' && z < 1.1) fgRef.current.zoom(1.1, 300);
-    }, 950);
-  }, 150);
-}, [graphData]);
+      const fg = fgRef.current;
+      if (!fg || typeof fg.zoomToFit !== 'function') return;
+      fg.zoomToFit(900, 60, node => newHighlightNodes.has(node.id));
+      setTimeout(() => {
+        const z = fgRef.current?.zoom();
+        if (typeof z === 'number' && z < 1.1) fgRef.current.zoom(1.1, 300);
+      }, 950);
+    }, 150);
+
+  }, [graphData]);
 
   // ─── 4. CLEAN TRANSIENT NODES ────────────────────────────────────────────
   const cleanTransientNodes = useCallback(() => {
     setGraphData(prev => {
       const removedIds = new Set(
-        prev.nodes.filter(n => n.type === 'lost' || n.type === 'recovered').map(n => n.id)
+        prev.nodes
+          .filter(n => n.type === 'lost' || n.type === 'recovered')
+          .map(n => n.id)
       );
       if (removedIds.size === 0) return prev;
       return {
@@ -322,11 +314,10 @@ export default function ApostolicTree() {
       ...clergy,
       id: clergy.hash,
       start_date: clergy.papacyStartDate ?? clergy.papacy_start_date
-        ? parseInt(clergy.papacyStartDate ?? clergy.papacy_start_date)
+        ? new Date(clergy.papacyStartDate ?? clergy.papacy_start_date).getFullYear()
         : 0,
       parent_hash: clergy.parentHash ?? clergy.parent_hash ?? null,
-      last_hash: clergy.lastHash ?? clergy.last_hash ?? null,
-      type: clergy.role?.toLowerCase() ?? 'pope',
+      type: clergy.role?.toLowerCase() === 'pope' ? 'pope' : 'recovered',
     };
     handleNodeClick(node);
   }, [graphData.nodes, handleNodeClick]);
@@ -340,8 +331,8 @@ export default function ApostolicTree() {
     const fg = fgRef.current;
     if (fg) {
       const popeNodes = graphData.nodes.filter(n => n.type === 'pope' || n.type === 'root');
-      const maxIdx = Math.max(...popeNodes.map(n => n.sortIndex ?? 0));
-      const totalH = maxIdx * NODE_SPACING;
+      const maxIdx    = Math.max(...popeNodes.map(n => n.sortIndex ?? 0));
+      const totalH    = maxIdx * NODE_SPACING;
       const targetZoom = Math.min((window.innerHeight * 0.75) / totalH, 2.5);
       fg.centerAt(0, totalH * 0.3, 700);
       fg.zoom(Math.max(targetZoom, 0.4), 700);
@@ -380,4 +371,4 @@ export default function ApostolicTree() {
       />
     </div>
   );
-} 
+}
