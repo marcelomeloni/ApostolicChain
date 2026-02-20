@@ -49,33 +49,20 @@ export function GraphCanvas({ fgRef, graphData, onNodeClick, highlightNodes, hig
   }, [graphData.nodes.length, fgRef]);
 
   // ─── 3. Initial camera framing ────────────────────────────────────────────
-  useEffect(() => {
-    if (initialCameraSet.current || graphData.nodes.length === 0) return;
+ useEffect(() => {
+  if (initialCameraSet.current || graphData.nodes.length === 0) return;
 
-    const timer = setTimeout(() => {
-      const fg = fgRef.current;
-      if (!fg || typeof fg.graphData !== 'function') return;
+  const timer = setTimeout(() => {
+    const fg = fgRef.current;
+    if (!fg || typeof fg.zoomToFit !== 'function') return;
 
-      const yNodes = fg.graphData().nodes.filter(n => n.type === 'pope' || n.type === 'root');
-      if (yNodes.length === 0) return;
+    // ✅ Enquadra todos os nós automaticamente
+    fg.zoomToFit(400, 60);
+    initialCameraSet.current = true;
+  }, 800);
 
-      const allY = yNodes.map(n => n.y).filter(y => Number.isFinite(y));
-      if (allY.length === 0) return;
-
-      const minY = Math.min(...allY);
-      const maxY = Math.max(...allY);
-      const rangeY = (maxY - minY) || 400;
-
-      const screenH = window.innerHeight;
-      const targetZoom = Math.min((screenH * 0.75) / rangeY, 2.5);
-
-      fg.centerAt(0, minY + rangeY * 0.3, 800);
-      fg.zoom(Math.max(targetZoom, 0.3), 800);
-      initialCameraSet.current = true;
-    }, 1500); // wait for warmupTicks + physics to settle
-
-    return () => clearTimeout(timer);
-  }, [graphData.nodes.length, fgRef]);
+  return () => clearTimeout(timer);
+}, [graphData.nodes.length, fgRef]);
 
   // ─── 4. Render wrappers ───────────────────────────────────────────────────
   const handlePaintNode = useCallback((node, ctx, globalScale) => {
@@ -153,3 +140,4 @@ export function GraphCanvas({ fgRef, graphData, onNodeClick, highlightNodes, hig
   );
 
 }
+
